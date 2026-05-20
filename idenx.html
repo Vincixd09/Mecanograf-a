@@ -1,0 +1,938 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Typist</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;700&family=Space+Mono:wght@400;700&display=swap"
+        rel="stylesheet">
+    <style>
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        :root {
+            --bg: #0d0f0e;
+            --surface: #141614;
+            --border: #2a2e29;
+            --green: #39ff8a;
+            --green-dim: #1a7a3f;
+            --amber: #ffd060;
+            --red: #ff5f5f;
+            --muted: #4a5249;
+            --text: #c8d4c6;
+            --font-mono: 'IBM Plex Mono', monospace;
+            --font-disp: 'Space Mono', monospace;
+        }
+
+        html,
+        body {
+            height: 100%;
+            background: var(--bg);
+            color: var(--text);
+            font-family: var(--font-mono);
+            overflow: hidden;
+        }
+
+        /* scanlines */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            z-index: 999;
+            pointer-events: none;
+            background: repeating-linear-gradient(to bottom, transparent 0px, transparent 3px, rgba(0, 0, 0, 0.07) 3px, rgba(0, 0, 0, 0.07) 4px);
+        }
+
+        /* vignette */
+        body::after {
+            content: '';
+            position: fixed;
+            inset: 0;
+            z-index: 998;
+            pointer-events: none;
+            background: radial-gradient(ellipse at center, transparent 60%, rgba(0, 0, 0, 0.45) 100%);
+        }
+
+        /* ── SCREENS ── */
+        .screen {
+            display: none;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        .screen.active {
+            display: flex;
+        }
+
+        /* ── LAYOUT SHARED ── */
+        .app-header {
+            display: grid;
+            grid-template-columns: 1fr auto 1fr;
+            align-items: center;
+            padding: 18px 32px 14px;
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+        }
+
+        .logo {
+            font-family: var(--font-disp);
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--green);
+            letter-spacing: 0.1em;
+            text-shadow: 0 0 18px rgba(57, 255, 138, 0.4);
+        }
+
+        .logo span {
+            color: var(--muted);
+            font-weight: 400;
+        }
+
+        .mode-bar {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .mode-label {
+            font-size: 10px;
+            letter-spacing: 0.12em;
+            color: var(--muted);
+            margin-right: 4px;
+        }
+
+        .mode-btn {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--muted);
+            font-family: var(--font-mono);
+            font-size: 11px;
+            padding: 4px 12px;
+            cursor: pointer;
+            letter-spacing: 0.05em;
+            transition: all 0.15s;
+            border-radius: 2px;
+        }
+
+        .mode-btn:hover {
+            border-color: var(--green-dim);
+            color: var(--text);
+        }
+
+        .mode-btn.active {
+            border-color: var(--green);
+            color: var(--green);
+            background: rgba(57, 255, 138, 0.06);
+            text-shadow: 0 0 8px rgba(57, 255, 138, 0.4);
+        }
+
+        .stats-bar {
+            display: flex;
+            gap: 28px;
+            align-items: center;
+            justify-self: end;
+        }
+
+        .stat {
+            text-align: right;
+        }
+
+        .stat-label {
+            font-size: 9px;
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            color: var(--muted);
+        }
+
+        .stat-value {
+            font-family: var(--font-disp);
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--amber);
+            line-height: 1;
+            text-shadow: 0 0 12px rgba(255, 208, 96, 0.3);
+            transition: color 0.2s;
+        }
+
+        .stat-value.good {
+            color: var(--green);
+            text-shadow: 0 0 12px rgba(57, 255, 138, 0.3);
+        }
+
+        .stat-value.bad {
+            color: var(--red);
+            text-shadow: 0 0 12px rgba(255, 95, 95, 0.3);
+        }
+
+        /* ── TYPING SCREEN ── */
+        .typing-main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            gap: 16px;
+            padding: 0 32px;
+            min-height: 0;
+        }
+
+        .progress-wrap {
+            height: 3px;
+            background: var(--border);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: var(--green-dim);
+            border-radius: 2px;
+            transition: width 0.1s, background 0.3s;
+            width: 0%;
+        }
+
+        /* the typing box */
+        .text-display {
+            position: relative;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 22px;
+            line-height: 2;
+            letter-spacing: 0.03em;
+            user-select: none;
+            overflow: hidden;
+            height: 300px;
+        }
+
+        .text-display::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            background: radial-gradient(ellipse at 50% 0%, rgba(57, 255, 138, 0.04) 0%, transparent 70%);
+        }
+
+        .text-inner {
+            overflow-y: scroll;
+            height: 100%;
+            scrollbar-width: none;
+            padding: 28px 32px;
+        }
+
+        .text-inner::-webkit-scrollbar {
+            display: none;
+        }
+
+        #text-content {
+            display: inline;
+        }
+
+        .char {
+            position: relative;
+            transition: color 0.04s;
+        }
+
+        .char.pending {
+            color: var(--muted);
+        }
+
+        .char.correct {
+            color: var(--green);
+        }
+
+        .char.wrong {
+            color: var(--red);
+            background: rgba(255, 95, 95, 0.12);
+            border-radius: 1px;
+        }
+
+        .char.active {
+            color: var(--text);
+        }
+
+        .char.active::before {
+            content: '';
+            position: absolute;
+            left: -1px;
+            top: 3px;
+            width: 10px;
+            height: calc(1em + 2px);
+            background: rgba(57, 255, 138, 0.28);
+            animation: blink 0.9s step-end infinite;
+        }
+
+        @keyframes blink {
+            50% {
+                opacity: 0;
+            }
+        }
+
+        /* idle hint below box */
+        .idle-hint {
+            text-align: center;
+            font-size: 11px;
+            color: var(--muted);
+            letter-spacing: 0.12em;
+            transition: opacity 0.2s;
+            pointer-events: none;
+        }
+
+        .idle-hint.hidden {
+            opacity: 0;
+        }
+
+        /* typing screen footer */
+        .typing-footer {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 32px 16px;
+            border-top: 1px solid var(--border);
+            flex-shrink: 0;
+        }
+
+        .hint {
+            font-size: 10px;
+            color: var(--muted);
+            letter-spacing: 0.08em;
+        }
+
+        .hint kbd {
+            display: inline-block;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 2px;
+            padding: 1px 5px;
+            font-family: var(--font-mono);
+            font-size: 10px;
+            color: var(--text);
+        }
+
+        .status-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--green-dim);
+            box-shadow: 0 0 6px var(--green-dim);
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        .status-dot.typing {
+            background: var(--green);
+            box-shadow: 0 0 8px var(--green);
+            animation: none;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 0.4;
+            }
+
+            50% {
+                opacity: 1;
+            }
+        }
+
+        /* ── RESULT SCREEN ── */
+        .result-screen {
+            align-items: center;
+            justify-content: center;
+            gap: 0;
+        }
+
+        .result-inner {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            padding: 48px 64px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            min-width: 420px;
+        }
+
+        .result-label {
+            font-family: var(--font-disp);
+            font-size: 11px;
+            letter-spacing: 0.25em;
+            color: var(--muted);
+        }
+
+        .result-wpm-val {
+            font-family: var(--font-disp);
+            font-size: 96px;
+            font-weight: 700;
+            color: var(--green);
+            text-shadow: 0 0 40px rgba(57, 255, 138, 0.45);
+            line-height: 1;
+        }
+
+        .result-wpm-sub {
+            font-size: 12px;
+            color: var(--muted);
+            letter-spacing: 0.12em;
+            margin-top: -8px;
+        }
+
+        .result-divider {
+            width: 100%;
+            height: 1px;
+            background: var(--border);
+        }
+
+        .result-metrics {
+            display: flex;
+            gap: 48px;
+        }
+
+        .metric {
+            text-align: center;
+        }
+
+        .metric .mval {
+            font-family: var(--font-disp);
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--amber);
+            line-height: 1;
+        }
+
+        .metric .mval.good {
+            color: var(--green);
+        }
+
+        .metric .mval.bad {
+            color: var(--red);
+        }
+
+        .metric .mlbl {
+            font-size: 10px;
+            color: var(--muted);
+            letter-spacing: 0.12em;
+            margin-top: 6px;
+        }
+
+        .btn-play-again {
+            background: transparent;
+            border: 1px solid var(--green);
+            color: var(--green);
+            font-family: var(--font-disp);
+            font-size: 12px;
+            letter-spacing: 0.18em;
+            padding: 10px 32px;
+            cursor: pointer;
+            transition: all 0.15s;
+            border-radius: 2px;
+            text-shadow: 0 0 8px rgba(57, 255, 138, 0.4);
+            margin-top: 8px;
+        }
+
+        .btn-play-again:hover {
+            background: rgba(57, 255, 138, 0.08);
+            box-shadow: 0 0 20px rgba(57, 255, 138, 0.15);
+        }
+
+        /* ── COMBO FLASH ── */
+        .combo-flash {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-family: var(--font-disp);
+            font-size: 88px;
+            font-weight: 700;
+            color: var(--green);
+            opacity: 0;
+            pointer-events: none;
+            text-shadow: 0 0 40px rgba(57, 255, 138, 0.8);
+            z-index: 900;
+        }
+
+        .combo-flash.show {
+            animation: combo-pop 0.55s ease-out forwards;
+        }
+
+        @keyframes combo-pop {
+            0% {
+                opacity: 0.9;
+                transform: translate(-50%, -50%) scale(1);
+            }
+
+            100% {
+                opacity: 0;
+                transform: translate(-50%, -50%) scale(1.4);
+            }
+        }
+
+        /* ── SHAKE ── */
+        @keyframes shake {
+
+            0%,
+            100% {
+                transform: translateX(0);
+            }
+
+            20% {
+                transform: translateX(-4px);
+            }
+
+            40% {
+                transform: translateX(4px);
+            }
+
+            60% {
+                transform: translateX(-3px);
+            }
+
+            80% {
+                transform: translateX(3px);
+            }
+        }
+
+        .text-display.shake {
+            animation: shake 0.28s ease;
+        }
+
+        /* ── HIDDEN INPUT ── */
+        #hidden-input {
+            position: absolute;
+            opacity: 0;
+            pointer-events: none;
+            width: 1px;
+            height: 1px;
+            top: 0;
+            left: 0;
+        }
+    </style>
+</head>
+
+<body>
+
+    <input id="hidden-input" type="text" autocomplete="off" autocorrect="off" spellcheck="false">
+    <div class="combo-flash" id="combo-flash"></div>
+
+    <!-- ══ TYPING SCREEN ══ -->
+    <div class="screen active" id="screen-typing">
+
+        <header class="app-header">
+            <div class="logo">TYPIST<span>_v1</span></div>
+
+
+
+            <div class="stats-bar">
+                <div class="stat">
+                    <div class="stat-label">PPM</div>
+                    <div class="stat-value" id="stat-wpm">0</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-label">PRECISION</div>
+                    <div class="stat-value" id="stat-acc">—</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-label">ERRORES</div>
+                    <div class="stat-value" id="stat-err">0</div>
+                </div>
+            </div>
+        </header>
+
+        <div class="typing-main">
+            <div class="progress-wrap">
+                <div class="progress-bar" id="progress-bar"></div>
+            </div>
+
+            <div class="text-display" id="text-display">
+                <div class="text-inner" id="text-inner"><span id="text-content"></span></div>
+            </div>
+
+            <div class="idle-hint" id="idle-hint">
+                // presiona cualquier tecla para comenzar
+            </div>
+        </div>
+
+        <footer class="typing-footer">
+            <div class="hint"><kbd>Tab</kbd> nueva sesion &nbsp;·&nbsp; <kbd>Enter</kbd> ver resultado</div>
+            <div class="status-dot" id="status-dot"></div>
+        </footer>
+
+    </div>
+
+    <!-- ══ RESULT SCREEN ══ -->
+    <div class="screen result-screen" id="screen-result">
+        <div class="result-inner">
+            <div class="result-label">// RESULTADO</div>
+            <div class="result-wpm-val" id="r-wpm">0</div>
+            <div class="result-wpm-sub">palabras por minuto</div>
+            <div class="result-divider"></div>
+            <div class="result-metrics">
+                <div class="metric">
+                    <div class="mval" id="r-acc">—</div>
+                    <div class="mlbl">PRECISION</div>
+                </div>
+                <div class="metric">
+                    <div class="mval" id="r-words">0</div>
+                    <div class="mlbl">PALABRAS</div>
+                </div>
+                <div class="metric">
+                    <div class="mval" id="r-err">0</div>
+                    <div class="mlbl">ERRORES</div>
+                </div>
+            </div>
+            <button class="btn-play-again" id="btn-again">[ PRACTICAR DE NUEVO ]</button>
+        </div>
+    </div>
+
+    <script>
+        // ── FRASES ──────────────────────────────────────────────────────────────────
+        const PHRASES = [
+            "la mecanografia es una habilidad que se desarrolla con practica diaria y constante atencion al detalle ya que cada tecla presionada con precision construye la base de una escritura rapida y eficiente que beneficia a cualquier persona en su vida profesional y academica",
+
+            "cuando los dedos aprenden a moverse sobre el teclado sin necesidad de mirar las teclas la mente queda libre para concentrarse completamente en las ideas que desea expresar lo cual mejora notablemente la calidad del texto producido y permite mantener el hilo del pensamiento sin interrupciones innecesarias causadas por la busqueda de letras",
+
+            "la tecnologia forma parte de nuestra vida cotidiana y saber escribir con rapidez y precision en un teclado se ha convertido en una competencia fundamental para cualquier estudiante o profesional que desee destacarse en un mundo donde la comunicacion escrita a traves de dispositivos electronicos es cada vez mas importante y necesaria",
+
+            "el aprendizaje de la escritura al tacto requiere dedicacion y paciencia pero los resultados valen completamente el esfuerzo invertido porque una vez que los movimientos se vuelven automaticos la velocidad aumenta de forma natural y los errores disminuyen considerablemente permitiendo producir textos mas largos en menos tiempo con mayor comodidad",
+
+            "practicar con textos variados y de longitud considerable es una de las mejores estrategias para mejorar la mecanografia porque obliga a los dedos a adaptarse a diferentes combinaciones de letras palabras y estructuras que no siempre resultan familiares pero que con la repeticion se vuelven cada vez mas faciles de ejecutar sin esfuerzo",
+
+            "la postura correcta frente al computador es tan importante como la tecnica misma porque mantener la espalda recta los codos en angulo recto y las muñecas ligeramente elevadas reduce la fatiga muscular y previene lesiones que pueden desarrollarse con el tiempo si se ignoran las normas basicas de ergonomia durante las sesiones de escritura",
+
+            "los estudiantes que incorporan la practica de mecanografia en su rutina diaria suelen notar mejoras significativas no solo en su velocidad de escritura sino tambien en su capacidad de concentracion y en la organizacion de sus ideas dado que el acto de escribir con fluidez actua como un puente directo entre el pensamiento y la expresion escrita",
+
+            "escribir con precision implica mucho mas que memorizar la posicion de las teclas ya que tambien requiere desarrollar un ritmo constante aprender a corregir errores sin perder el flujo general del texto y cultivar la paciencia necesaria para no frustrarse en los momentos en que la velocidad no alcanza el nivel deseado durante las sesiones de practica",
+
+            "la historia de la mecanografia se remonta a finales del siglo diecinueve cuando las primeras maquinas de escribir comenzaron a transformar la manera en que las personas producian documentos escritos y desde entonces la habilidad de escribir con rapidez y exactitud sobre un teclado ha sido considerada una ventaja competitiva en numerosos ambitos laborales",
+
+            "el ritmo es uno de los elementos mas importantes en la mecanografia profesional porque mantener un flujo constante de pulsaciones reduce los errores aumenta la velocidad promedio y hace que el proceso de escritura resulte menos agotador tanto fisica como mentalmente lo cual permite mantener sesiones de trabajo mas largas sin perder la calidad del texto producido",
+
+            "muchas personas comienzan escribiendo lentamente porque sienten inseguridad al usar todas las filas del teclado pero con suficiente practica los movimientos se vuelven naturales y cada dedo aprende automaticamente que teclas debe presionar incluso cuando las palabras parecen largas o dificiles de escribir durante los primeros intentos",
+
+            "una buena rutina de mecanografia puede incluir ejercicios de calentamiento palabras repetidas frases extensas y pequeños desafios de velocidad que ayuden a mejorar tanto la memoria muscular como la precision permitiendo que la persona gane confianza y escriba textos completos de manera mucho mas fluida con el paso de las semanas",
+
+            "los errores forman parte normal del aprendizaje y no deben interpretarse como una señal de fracaso porque incluso los mecanografos mas experimentados cometen equivocaciones de vez en cuando especialmente cuando trabajan durante muchas horas o escriben textos complejos que contienen palabras poco frecuentes o estructuras dificiles",
+
+            "la coordinacion entre ojos manos y mente mejora considerablemente cuando una persona practica mecanografia todos los dias ya que el cerebro comienza a reconocer patrones repetitivos y desarrolla una mayor rapidez para transformar pensamientos en palabras escritas sin necesidad de detenerse constantemente a buscar letras en el teclado",
+
+            "es importante mantener un ambiente tranquilo durante las sesiones de practica porque las distracciones pueden afectar el ritmo de escritura y aumentar la cantidad de errores mientras que un espacio ordenado y silencioso ayuda a mantener la concentracion y permite que el aprendizaje avance de forma mucho mas constante y efectiva",
+
+            "las personas que dominan la mecanografia suelen ahorrar una enorme cantidad de tiempo a lo largo de su vida academica y laboral debido a que pueden redactar informes mensajes tareas y documentos extensos sin cansarse demasiado ni perder velocidad incluso cuando necesitan trabajar bajo presion o cumplir plazos ajustados",
+
+            "aprender la posicion correcta de cada dedo sobre el teclado es uno de los pasos mas importantes para desarrollar una buena tecnica porque permite distribuir el esfuerzo de manera equilibrada evitando movimientos innecesarios y ayudando a que las manos trabajen de forma coordinada durante largos periodos de escritura continua",
+
+            "la practica constante vale mucho mas que intentar escribir extremadamente rapido desde el primer dia ya que construir una base solida de precision ayuda a desarrollar velocidad de forma natural mientras que intentar correr demasiado pronto suele generar malos habitos que luego resultan dificiles de corregir con el tiempo",
+
+            "cada persona aprende mecanografia a un ritmo diferente por lo que comparar el progreso propio con el de otras personas puede generar frustracion innecesaria lo mas importante es mantener la constancia practicar con paciencia y celebrar las pequeñas mejoras que aparecen despues de cada sesion de entrenamiento",
+
+            "la escritura rapida no solo resulta util para trabajos de oficina sino tambien para estudiantes programadores escritores diseñadores y cualquier persona que utilice dispositivos electronicos diariamente ya que una buena velocidad de mecanografia facilita la comunicacion y reduce el esfuerzo necesario para completar tareas digitales",
+
+            "muchas personas descubren que escribir sin mirar el teclado les permite pensar con mayor claridad debido a que la atencion deja de centrarse en encontrar letras y comienza a enfocarse completamente en el contenido del mensaje que desean comunicar de forma ordenada y natural",
+
+            "la mecanografia moderna se practica principalmente en computadoras pero los principios fundamentales siguen siendo los mismos que hace muchos años mantener una postura correcta usar todos los dedos y desarrollar un ritmo constante que permita escribir textos largos sin agotarse rapidamente",
+
+            "al principio puede parecer dificil recordar donde se encuentra cada tecla especialmente cuando se intenta utilizar todos los dedos correctamente pero con paciencia y repeticion el cerebro comienza a memorizar automaticamente los movimientos necesarios para escribir con soltura",
+
+            "los ejercicios que incluyen palabras largas y frases complejas ayudan a mejorar la coordinacion de los dedos porque obligan a realizar movimientos variados que fortalecen la memoria muscular y preparan a la persona para escribir cualquier tipo de texto con mayor facilidad",
+
+            "mantener una velocidad estable suele ser mas importante que intentar escribir extremadamente rapido ya que un ritmo equilibrado ayuda a reducir errores permite conservar la precision y hace que las sesiones de practica resulten mucho mas comodas y productivas a largo plazo",
+
+            "las pausas cortas durante las sesiones de mecanografia son importantes porque ayudan a relajar las manos descansar la vista y evitar tensiones musculares que pueden aparecer despues de escribir durante largos periodos sin interrupciones ni cambios de postura",
+
+            "la confianza al escribir aumenta gradualmente con cada practica realizada debido a que el cuerpo comienza a reconocer patrones repetitivos y los movimientos dejan de sentirse forzados permitiendo que las palabras aparezcan en pantalla con mayor naturalidad y rapidez",
+
+            "aprender mecanografia tambien puede mejorar la experiencia al usar internet enviar mensajes redactar documentos participar en clases virtuales o trabajar en proyectos personales ya que una mayor velocidad de escritura facilita cualquier actividad relacionada con texto digital",
+
+            "muchos estudiantes descubren que tomar apuntes durante clases o conferencias se vuelve mucho mas sencillo despues de mejorar su mecanografia porque pueden concentrarse mejor en escuchar la informacion mientras sus manos escriben automaticamente gran parte del contenido",
+
+            "la practica diaria aunque sea durante pocos minutos suele producir mejores resultados que entrenar muchas horas un solo dia porque el cerebro aprende de manera mas efectiva cuando los ejercicios se repiten constantemente a lo largo del tiempo sin generar agotamiento excesivo",
+
+            "los teclados en español incluyen la letra ñ lo cual permite escribir palabras comunes de nuestro idioma de manera mas natural y correcta facilitando la practica con textos reales que contienen expresiones utilizadas frecuentemente en conversaciones y documentos cotidianos",
+
+            "escribir correctamente requiere equilibrio entre velocidad y precision porque avanzar demasiado rapido puede generar errores constantes mientras que escribir demasiado lento dificulta mantener el flujo natural de las ideas durante la redaccion de textos extensos",
+
+            "la memoria muscular es una de las habilidades mas importantes que se desarrollan durante la practica de mecanografia ya que permite que los dedos reaccionen automaticamente ante ciertas combinaciones de letras sin necesidad de pensar conscientemente en cada movimiento",
+
+            "algunas personas prefieren practicar con historias largas mientras que otras eligen listas de palabras o frases repetitivas pero lo verdaderamente importante es mantener una rutina constante que permita seguir fortaleciendo la coordinacion y la velocidad progresivamente",
+
+            "la mecanografia puede parecer una habilidad pequeña al principio pero con el tiempo se convierte en una herramienta extremadamente util que mejora la productividad la comodidad y la eficiencia en casi cualquier tarea realizada desde una computadora o dispositivo digital"
+        ];
+        // ── ESTADO ──────────────────────────────────────────────────────────────────
+
+
+        let state = {
+            // text is an infinite rolling buffer of word spans
+            words: [],        // array of {chars: span[], done: bool}
+            wordIndex: 0,     // current word being typed
+            charIndex: 0,     // current char within word
+            allChars: [],     // flat list of all spans in order
+            flatIndex: 0,     // current position in allChars
+            started: false,
+            startTime: 0,
+            errors: 0,
+            totalTyped: 0,
+            correctTyped: 0,
+            combo: 0,
+            totalWords: 0,    // how many words selected for this session
+            wordsCompleted: 0,
+        };
+
+        // ── DOM ──────────────────────────────────────────────────────────────────────
+        const $ = id => document.getElementById(id);
+        const textContent = $('text-content');
+        const hiddenInput = $('hidden-input');
+        const progressBar = $('progress-bar');
+        const statWpm = $('stat-wpm');
+        const statAcc = $('stat-acc');
+        const statErr = $('stat-err');
+        const idleHint = $('idle-hint');
+        const statusDot = $('status-dot');
+        const display = $('text-display');
+        const comboFlash = $('combo-flash');
+
+        // ── WORD POOL ────────────────────────────────────────────────────────────────
+        function makeWordPool() {
+            // mezcla 3 frases largas al azar para formar el texto de la sesion
+            const shuffled = [...PHRASES].sort(() => Math.random() - 0.5);
+            return shuffled.slice(0, 3).join(' ').split(' ');
+        }
+
+        // ── BUILD DOM ────────────────────────────────────────────────────────────────
+        function buildText(words) {
+            textContent.innerHTML = '';
+            const allChars = [];
+            const wordObjs = [];
+
+            words.forEach((word, wi) => {
+                const wordSpans = [];
+                for (let ci = 0; ci < word.length; ci++) {
+                    const span = document.createElement('span');
+                    span.className = 'char pending';
+                    span.textContent = word[ci];
+                    textContent.appendChild(span);
+                    allChars.push(span);
+                    wordSpans.push(span);
+                }
+                // space after word (except last)
+                if (wi < words.length - 1) {
+                    const sp = document.createElement('span');
+                    sp.className = 'char pending';
+                    sp.textContent = ' ';
+                    sp.style.whiteSpace = 'pre';
+                    textContent.appendChild(sp);
+                    allChars.push(sp);
+                    wordSpans.push(sp);
+                }
+                wordObjs.push({ chars: wordSpans });
+            });
+
+            return { allChars, wordObjs };
+        }
+
+        // ── INIT ─────────────────────────────────────────────────────────────────────
+        function init() {
+            showScreen('typing');
+            const words = makeWordPool();
+            state.totalWords = words.length;
+            state.wordsCompleted = 0;
+            state.flatIndex = 0;
+            state.started = false;
+            state.startTime = 0;
+            state.errors = 0;
+            state.totalTyped = 0;
+            state.correctTyped = 0;
+            state.combo = 0;
+
+            const { allChars, wordObjs } = buildText(words);
+            state.allChars = allChars;
+            state.words = wordObjs;
+
+            const ti = document.getElementById('text-inner'); if (ti) ti.scrollTop = 0;
+            hiddenInput.value = '';
+            idleHint.classList.remove('hidden');
+            statusDot.className = 'status-dot';
+            updateCursor();
+            updateStats();
+            progressBar.style.width = '0%';
+            progressBar.style.background = 'var(--green-dim)';
+        }
+
+        // ── SCREENS ──────────────────────────────────────────────────────────────────
+        function showScreen(id) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            $('screen-' + id).classList.add('active');
+            if (id === 'typing') hiddenInput.focus();
+        }
+
+        // ── CURSOR + SCROLL ──────────────────────────────────────────────────────────
+        function updateCursor() {
+            state.allChars.forEach((span, i) => {
+                span.classList.remove('active');
+                if (i === state.flatIndex) span.classList.add('active');
+            });
+            scrollToActive();
+        }
+
+        function scrollToActive() {
+            if (state.flatIndex >= state.allChars.length) return;
+            const span = state.allChars[state.flatIndex];
+            const inner = document.getElementById('text-inner');
+            if (!span || !inner) return;
+            const lh = parseFloat(getComputedStyle(inner).lineHeight) || 44;
+            // scrollear para que la linea activa quede en la segunda fila visible
+            const target = Math.max(0, span.offsetTop - lh);
+            inner.scrollTo({ top: target, behavior: 'smooth' });
+        }
+
+        // ── PROGRESS ─────────────────────────────────────────────────────────────────
+        function updateProgress() {
+            const pct = state.allChars.length > 0
+                ? (state.flatIndex / state.allChars.length) * 100 : 0;
+            progressBar.style.width = pct + '%';
+            progressBar.style.background = state.errors > 5 ? 'var(--red)' : 'var(--green-dim)';
+        }
+
+        // ── STATS ────────────────────────────────────────────────────────────────────
+        function calcWpm() {
+            if (!state.startTime) return 0;
+            const elapsed = (performance.now() - state.startTime) / 60000;
+            if (elapsed <= 0) return 0;
+            return Math.round((state.correctTyped / 5) / elapsed);
+        }
+        function calcAcc() {
+            if (state.totalTyped === 0) return null;
+            return Math.round((state.correctTyped / state.totalTyped) * 100);
+        }
+        function updateStats() {
+            const wpm = state.started ? calcWpm() : 0;
+            const acc = calcAcc();
+            statWpm.textContent = wpm;
+            statWpm.className = 'stat-value' + (wpm >= 60 ? ' good' : wpm > 0 && wpm < 30 ? ' bad' : '');
+            statAcc.textContent = acc !== null ? acc + '%' : '—';
+            statAcc.className = 'stat-value' + (acc !== null ? (acc >= 95 ? ' good' : acc < 80 ? ' bad' : '') : '');
+            statErr.textContent = state.errors;
+            statErr.className = 'stat-value' + (state.errors > 5 ? ' bad' : state.errors === 0 && state.started ? ' good' : '');
+        }
+
+        // ── SHOW RESULT ──────────────────────────────────────────────────────────────
+        function showResult() {
+            statusDot.className = 'status-dot';
+            const wpm = calcWpm();
+            const acc = calcAcc();
+            const words = Math.round(state.correctTyped / 5);
+
+            $('r-wpm').textContent = wpm;
+            $('r-acc').textContent = acc !== null ? acc + '%' : '—';
+            $('r-acc').className = 'mval' + (acc !== null ? (acc >= 95 ? ' good' : acc < 80 ? ' bad' : '') : '');
+            $('r-words').textContent = words;
+            $('r-err').textContent = state.errors;
+
+            showScreen('result');
+        }
+
+        // ── COMBO FLASH ──────────────────────────────────────────────────────────────
+        function flashCombo(n) {
+            comboFlash.textContent = n + 'x';
+            comboFlash.classList.remove('show');
+            void comboFlash.offsetWidth;
+            comboFlash.classList.add('show');
+        }
+
+        // ── KEYDOWN ──────────────────────────────────────────────────────────────────
+        document.addEventListener('keydown', e => {
+            // Global shortcuts
+            if (e.key === 'Tab') { e.preventDefault(); init(); return; }
+
+            // On result screen
+            if ($('screen-result').classList.contains('active')) {
+                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); init(); }
+                return;
+            }
+
+            // Enter = show result mid-session (if started)
+            if (e.key === 'Enter') {
+                if (state.started) showResult();
+                return;
+            }
+
+            if (e.key === 'Escape') { init(); return; }
+
+            // Start on first real keystroke
+            if (!state.started && e.key.length === 1) {
+                state.started = true;
+                state.startTime = performance.now();
+                idleHint.classList.add('hidden');
+                statusDot.className = 'status-dot typing';
+            }
+
+            if (!state.started) return;
+
+            if (e.key === 'Backspace') {
+                if (state.flatIndex > 0) {
+                    state.flatIndex--;
+                    state.allChars[state.flatIndex].className = 'char pending';
+                    updateCursor();
+                    updateProgress();
+                }
+                return;
+            }
+
+            if (e.key.length !== 1) return;
+            if (state.flatIndex >= state.allChars.length) return;
+
+            // Figure out expected character (undo nbsp encoding)
+            const span = state.allChars[state.flatIndex];
+            const expected = span.textContent;
+            const correct = e.key === expected;
+
+            state.totalTyped++;
+            span.className = 'char ' + (correct ? 'correct' : 'wrong');
+            state.flatIndex++;
+
+            if (correct) {
+                state.correctTyped++;
+                state.combo++;
+                if ([10, 25, 50, 100].includes(state.combo)) flashCombo(state.combo);
+            } else {
+                state.errors++;
+                state.combo = 0;
+                display.classList.remove('shake');
+                void display.offsetWidth;
+                display.classList.add('shake');
+            }
+
+            updateCursor();
+            updateProgress();
+            updateStats();
+
+            // All words done → show result automatically
+            if (state.flatIndex >= state.allChars.length) showResult();
+        });
+
+        // ── FOCUS ────────────────────────────────────────────────────────────────────
+        document.addEventListener('click', () => hiddenInput.focus());
+        window.addEventListener('focus', () => hiddenInput.focus());
+        hiddenInput.addEventListener('input', () => { hiddenInput.value = ''; });
+        hiddenInput.focus();
+
+        // ── PLAY AGAIN ───────────────────────────────────────────────────────────────
+        $('btn-again').addEventListener('click', () => init());
+
+        // ── LIVE STATS REFRESH ───────────────────────────────────────────────────────
+        setInterval(() => { if (state.started) updateStats(); }, 500);
+
+        // ── START ────────────────────────────────────────────────────────────────────
+        init();
+    </script>
+</body>
+
+</html>
